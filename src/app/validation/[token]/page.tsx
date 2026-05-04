@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, use } from "react";
 import { CalendarCheck, CheckCircle, XCircle, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Textarea } from "@/components/ui/Input";
@@ -26,7 +26,8 @@ interface Demande {
 
 type PageState = "chargement" | "initial" | "approuve" | "refuse" | "invalide" | "deja_traite";
 
-export default function ValidationPage({ params }: { params: { token: string } }) {
+export default function ValidationPage({ params }: { params: Promise<{ token: string }> }) {
+  const { token } = use(params);
   const [etat, setEtat] = useState<PageState>("chargement");
   const [demande, setDemande] = useState<Demande | null>(null);
   const [commentaire, setCommentaire] = useState("");
@@ -41,7 +42,7 @@ export default function ValidationPage({ params }: { params: { token: string } }
           employes ( nom, prenom, email ),
           types_conge ( nom )
         `)
-        .eq("token_validation", params.token)
+        .eq("token_validation", token)
         .single();
 
       if (!data) { setEtat("invalide"); return; }
@@ -64,7 +65,7 @@ export default function ValidationPage({ params }: { params: { token: string } }
       setEtat("initial");
     };
     charger();
-  }, [params.token]);
+  }, [token]);
 
   const traiter = async (action: "approuve" | "refuse") => {
     if (!demande) return;
