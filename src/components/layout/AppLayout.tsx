@@ -5,11 +5,11 @@ interface AppLayoutProps {
   children: React.ReactNode;
   titre: string;
   sousTitre?: string;
-  role?: "employe" | "admin";
+  role?: "employe" | "manager" | "admin";
   nomUtilisateur?: string;
 }
 
-export function AppLayout({ children, titre, sousTitre, role, nomUtilisateur }: AppLayoutProps) {
+export function AppLayout({ children, titre, sousTitre, role = "employe", nomUtilisateur }: AppLayoutProps) {
   return (
     <div className="min-h-screen bg-gray-50">
       <Sidebar role={role} nomUtilisateur={nomUtilisateur} />

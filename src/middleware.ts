@@ -9,17 +9,11 @@ export async function middleware(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
+        getAll() { return request.cookies.getAll(); },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value)
-          );
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
           response = NextResponse.next({ request });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options)
-          );
+          cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
         },
       },
     }
@@ -28,17 +22,50 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   const pathname = request.nextUrl.pathname;
 
-  // Rediriger vers /login si non connecté (sauf routes publiques)
   const routesPubliques = ["/login", "/validation"];
   const estPublique = routesPubliques.some((r) => pathname.startsWith(r));
 
+  // Non connecté → login
   if (!user && !estPublique) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  // Rediriger vers /dashboard si déjà connecté et sur /login
+  // Connecté sur /login → rediriger selon le rôle
   if (user && pathname === "/login") {
+    const { data: employe } = await supabase
+      .from("employes")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+
+    const role = employe?.role ?? "employe";
+    if (role === "admin") return NextResponse.redirect(new URL("/admin", request.url));
+    if (role === "manager") return NextResponse.redirect(new URL("/manager", request.url));
     return NextResponse.redirect(new URL("/dashboard", request.url));
+  }
+
+  // Protéger /admin → réservé aux admins
+  if (user && pathname.startsWith("/admin")) {
+    const { data: employe } = await supabase
+      .from("employes")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+    if (employe?.role !== "admin") {
+      return NextResponse.redirect(new URL("/dashboard", request.url));
+    }
+  }
+
+  // Protéger /manager → réservé aux managers et admins
+  if (user && pathname.startsWith("/manager")) {
+    const { data: employe } = await supabase
+      .from("employes")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+    if (!["manager", "admin"].includes(employe?.role ?? "")) {
+      return NextResponse.redirect(new URL("/dashboard", request.url));
+    }
   }
 
   return response;

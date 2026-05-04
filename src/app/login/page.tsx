@@ -19,26 +19,40 @@ export default function LoginPage() {
     setErreur("");
     setChargement(true);
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password: motDePasse,
     });
 
-    setChargement(false);
-
-    if (error) {
+    if (error || !data.user) {
+      setChargement(false);
       setErreur("Email ou mot de passe incorrect.");
       return;
     }
 
-    router.push("/dashboard");
+    // Récupérer le rôle pour rediriger vers le bon espace
+    const { data: employe } = await supabase
+      .from("employes")
+      .select("role")
+      .eq("id", data.user.id)
+      .single();
+
+    const role = employe?.role ?? "employe";
+
+    if (role === "admin") {
+      router.push("/admin");
+    } else if (role === "manager") {
+      router.push("/manager");
+    } else {
+      router.push("/dashboard");
+    }
+
     router.refresh();
   };
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
-        {/* Logo */}
         <div className="flex flex-col items-center mb-8">
           <div className="h-12 w-12 bg-blue-600 rounded-xl flex items-center justify-center mb-4 shadow-sm">
             <CalendarCheck className="h-6 w-6 text-white" />
@@ -47,7 +61,6 @@ export default function LoginPage() {
           <p className="text-sm text-gray-500 mt-1">Connectez-vous à votre espace</p>
         </div>
 
-        {/* Formulaire */}
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
           <form onSubmit={handleSubmit} className="space-y-4">
             <Input
@@ -84,10 +97,34 @@ export default function LoginPage() {
 
           <p className="text-center text-xs text-gray-400 mt-4">
             Mot de passe oublié ?{" "}
-            <a href="#" className="text-blue-600 hover:underline">
-              Réinitialiser
-            </a>
+            <a href="#" className="text-blue-600 hover:underline">Réinitialiser</a>
           </p>
+        </div>
+
+        {/* Comptes de test */}
+        <div className="mt-6 bg-white rounded-xl border border-gray-200 p-4">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Comptes de test</p>
+          <div className="space-y-2 text-xs text-gray-600">
+            {[
+              { role: "Admin RH",  email: "admin@conges.fr",           color: "bg-purple-100 text-purple-700" },
+              { role: "Manager",   email: "thomas.bernard@conges.fr",  color: "bg-blue-100 text-blue-700" },
+              { role: "Manager",   email: "claire.rousseau@conges.fr", color: "bg-blue-100 text-blue-700" },
+              { role: "Employé",   email: "marie.dupont@conges.fr",    color: "bg-gray-100 text-gray-700" },
+              { role: "Employé",   email: "julien.petit@conges.fr",    color: "bg-gray-100 text-gray-700" },
+            ].map((c) => (
+              <div key={c.email} className="flex items-center justify-between gap-2">
+                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${c.color}`}>{c.role}</span>
+                <button
+                  type="button"
+                  className="text-blue-600 hover:underline truncate"
+                  onClick={() => setEmail(c.email)}
+                >
+                  {c.email}
+                </button>
+              </div>
+            ))}
+            <p className="text-gray-400 pt-1">Mot de passe : <span className="font-mono font-semibold text-gray-600">Conges2025!</span></p>
+          </div>
         </div>
       </div>
     </div>

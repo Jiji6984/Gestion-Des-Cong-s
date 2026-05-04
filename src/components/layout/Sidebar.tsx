@@ -4,34 +4,40 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { clsx } from "clsx";
 import {
-  LayoutDashboard,
-  CalendarPlus,
-  ClipboardList,
-  Users,
-  LogOut,
-  CalendarCheck,
+  LayoutDashboard, CalendarPlus, ClipboardList,
+  Users, LogOut, CalendarCheck, UsersRound,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 const navEmploye = [
   { href: "/dashboard", label: "Tableau de bord", icon: LayoutDashboard },
-  { href: "/demande", label: "Nouvelle demande", icon: CalendarPlus },
+  { href: "/demande",   label: "Nouvelle demande", icon: CalendarPlus },
+];
+
+const navManager = [
+  { href: "/manager", label: "Demandes de l'équipe", icon: UsersRound },
 ];
 
 const navAdmin = [
-  { href: "/admin", label: "Toutes les demandes", icon: ClipboardList },
-  { href: "/admin/employes", label: "Employés", icon: Users },
+  { href: "/admin",          label: "Toutes les demandes", icon: ClipboardList },
+  { href: "/admin/employes", label: "Employés",            icon: Users },
 ];
 
+const roleConfig = {
+  employe: { label: "Employé",        nav: navEmploye },
+  manager: { label: "Manager",        nav: navManager },
+  admin:   { label: "Administrateur", nav: navAdmin },
+};
+
 interface SidebarProps {
-  role?: "employe" | "admin";
+  role?: "employe" | "manager" | "admin";
   nomUtilisateur?: string;
 }
 
 export function Sidebar({ role = "employe", nomUtilisateur = "Utilisateur" }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const nav = role === "admin" ? navAdmin : navEmploye;
+  const { label, nav } = roleConfig[role];
 
   const handleDeconnexion = async () => {
     await supabase.auth.signOut();
@@ -49,12 +55,7 @@ export function Sidebar({ role = "employe", nomUtilisateur = "Utilisateur" }: Si
       </div>
 
       <nav className="flex-1 px-3 py-4 space-y-1">
-        {role === "admin" && (
-          <p className="px-3 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">
-            Administration
-          </p>
-        )}
-        {nav.map(({ href, label, icon: Icon }) => (
+        {nav.map(({ href, label: lbl, icon: Icon }) => (
           <Link
             key={href}
             href={href}
@@ -66,7 +67,7 @@ export function Sidebar({ role = "employe", nomUtilisateur = "Utilisateur" }: Si
             )}
           >
             <Icon className="h-4 w-4 flex-shrink-0" />
-            {label}
+            {lbl}
           </Link>
         ))}
       </nav>
@@ -78,7 +79,7 @@ export function Sidebar({ role = "employe", nomUtilisateur = "Utilisateur" }: Si
           </div>
           <div className="min-w-0">
             <p className="text-sm font-medium text-gray-900 truncate">{nomUtilisateur}</p>
-            <p className="text-xs text-gray-400">{role === "admin" ? "Administrateur" : "Employé"}</p>
+            <p className="text-xs text-gray-400">{label}</p>
           </div>
         </div>
         <button
