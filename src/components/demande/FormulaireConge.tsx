@@ -1,69 +1,97 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input, Select, Textarea } from "@/components/ui/Input";
+import { supabase } from "@/lib/supabase";
 import { CheckCircle } from "lucide-react";
 
-const typesConge = [
-  { value: "", label: "Sélectionnez un type" },
-  { value: "annuel", label: "Congés annuels" },
-  { value: "rtt", label: "RTT" },
-  { value: "maladie", label: "Congé maladie" },
-  { value: "sans_solde", label: "Sans solde" },
-  { value: "maternite", label: "Congé maternité / paternité" },
-  { value: "familial", label: "Événement familial" },
-];
+interface TypeConge {
+  id: string;
+  nom: string;
+  limite_jours: number | null;
+}
 
 export function FormulaireConge() {
+  const [types, setTypes] = useState<TypeConge[]>([]);
   const [envoye, setEnvoye] = useState(false);
   const [chargement, setChargement] = useState(false);
-  const [form, setForm] = useState({
-    type: "",
-    dateDebut: "",
-    dateFin: "",
-    motif: "",
-  });
+  const [form, setForm] = useState({ type_conge_id: "", date_debut: "", date_fin: "", motif: "" });
   const [erreurs, setErreurs] = useState<Record<string, string>>({});
 
-  const valider = () => {
-    const e: Record<string, string> = {};
-    if (!form.type) e.type = "Veuillez sélectionner un type.";
-    if (!form.dateDebut) e.dateDebut = "La date de début est requise.";
-    if (!form.dateFin) e.dateFin = "La date de fin est requise.";
-    if (form.dateDebut && form.dateFin && form.dateFin < form.dateDebut)
-      e.dateFin = "La date de fin doit être après la date de début.";
-    return e;
-  };
+  useEffect(() => {
+    supabase
+      .from("types_conge")
+      .select("id, nom, limite_jours")
+      .eq("actif", true)
+      .order("nom")
+      .then(({ data }) => setTypes(data ?? []));
+  }, []);
+
+  const options = [
+    { value: "", label: "Sélectionnez un type" },
+    ...types.map((t) => ({ value: t.id, label: t.nom })),
+  ];
 
   const calculerJours = () => {
-    if (!form.dateDebut || !form.dateFin) return 0;
-    const debut = new Date(form.dateDebut);
-    const fin = new Date(form.dateFin);
+    if (!form.date_debut || !form.date_fin) return 0;
+    const debut = new Date(form.date_debut);
+    const fin = new Date(form.date_fin);
     let jours = 0;
-    const current = new Date(debut);
-    while (current <= fin) {
-      const jour = current.getDay();
-      if (jour !== 0 && jour !== 6) jours++;
-      current.setDate(current.getDate() + 1);
+    const cur = new Date(debut);
+    while (cur <= fin) {
+      const j = cur.getDay();
+      if (j !== 0 && j !== 6) jours++;
+      cur.setDate(cur.getDate() + 1);
     }
     return jours;
   };
 
+  const valider = () => {
+    const e: Record<string, string> = {};
+    if (!form.type_conge_id) e.type_conge_id = "Veuillez sélectionner un type.";
+    if (!form.date_debut) e.date_debut = "La date de début est requise.";
+    if (!form.date_fin) e.date_fin = "La date de fin est requise.";
+    if (form.date_debut && form.date_fin && form.date_fin < form.date_debut)
+      e.date_fin = "La date de fin doit être après la date de début.";
+    return e;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const e2 = valider();
-    if (Object.keys(e2).length > 0) {
-      setErreurs(e2);
-      return;
-    }
+    const errs = valider();
+    if (Object.keys(errs).length > 0) { setErreurs(errs); return; }
     setErreurs({});
     setChargement(true);
-    // TODO: soumettre via Supabase
-    await new Promise((r) => setTimeout(r, 1200));
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const nb_jours = calculerJours();
+
+    const { error } = await supabase.from("demandes_conge").insert({
+      employe_id: user.id,
+      type_conge_id: form.type_conge_id,
+      date_debut: form.date_debut,
+      date_fin: form.date_fin,
+      nb_jours,
+      motif: form.motif || null,
+      statut: "en_attente",
+      validateur_id: null,
+    });
+
     setChargement(false);
+    if (error) {
+      setErreurs({ global: "Une erreur est survenue. Veuillez réessayer." });
+      return;
+    }
     setEnvoye(true);
+  };
+
+  const reinitialiser = () => {
+    setEnvoye(false);
+    setForm({ type_conge_id: "", date_debut: "", date_fin: "", motif: "" });
   };
 
   if (envoye) {
@@ -79,7 +107,7 @@ export function FormulaireConge() {
           <p className="text-sm text-gray-500 mb-6">
             Votre demande a bien été transmise. Vous recevrez une notification dès qu&apos;elle sera traitée.
           </p>
-          <Button variant="secondary" onClick={() => { setEnvoye(false); setForm({ type: "", dateDebut: "", dateFin: "", motif: "" }); }}>
+          <Button variant="secondary" onClick={reinitialiser}>
             Nouvelle demande
           </Button>
         </CardContent>
@@ -99,10 +127,10 @@ export function FormulaireConge() {
           <Select
             id="type"
             label="Type de congé"
-            options={typesConge}
-            value={form.type}
-            onChange={(e) => setForm({ ...form, type: e.target.value })}
-            error={erreurs.type}
+            options={options}
+            value={form.type_conge_id}
+            onChange={(e) => setForm({ ...form, type_conge_id: e.target.value })}
+            error={erreurs.type_conge_id}
           />
 
           <div className="grid grid-cols-2 gap-4">
@@ -110,25 +138,28 @@ export function FormulaireConge() {
               id="dateDebut"
               type="date"
               label="Date de début"
-              value={form.dateDebut}
-              onChange={(e) => setForm({ ...form, dateDebut: e.target.value })}
-              error={erreurs.dateDebut}
+              value={form.date_debut}
+              onChange={(e) => setForm({ ...form, date_debut: e.target.value })}
+              error={erreurs.date_debut}
             />
             <Input
               id="dateFin"
               type="date"
               label="Date de fin"
-              value={form.dateFin}
-              min={form.dateDebut}
-              onChange={(e) => setForm({ ...form, dateFin: e.target.value })}
-              error={erreurs.dateFin}
+              value={form.date_fin}
+              min={form.date_debut}
+              onChange={(e) => setForm({ ...form, date_fin: e.target.value })}
+              error={erreurs.date_fin}
             />
           </div>
 
           {nbJours > 0 && (
             <div className="rounded-lg bg-blue-50 border border-blue-100 px-4 py-3">
               <p className="text-sm text-blue-700 font-medium">
-                Durée estimée : <span className="font-bold">{nbJours} jour{nbJours > 1 ? "s" : ""} ouvré{nbJours > 1 ? "s" : ""}</span>
+                Durée estimée :{" "}
+                <span className="font-bold">
+                  {nbJours} jour{nbJours > 1 ? "s" : ""} ouvré{nbJours > 1 ? "s" : ""}
+                </span>
               </p>
             </div>
           )}
@@ -141,6 +172,12 @@ export function FormulaireConge() {
             onChange={(e) => setForm({ ...form, motif: e.target.value })}
           />
 
+          {erreurs.global && (
+            <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2.5">
+              <p className="text-sm text-red-600">{erreurs.global}</p>
+            </div>
+          )}
+
           <div className="flex items-center gap-3 pt-2">
             <Button type="submit" loading={chargement} className="flex-1">
               Soumettre la demande
@@ -148,7 +185,7 @@ export function FormulaireConge() {
             <Button
               type="button"
               variant="secondary"
-              onClick={() => setForm({ type: "", dateDebut: "", dateFin: "", motif: "" })}
+              onClick={() => setForm({ type_conge_id: "", date_debut: "", date_fin: "", motif: "" })}
             >
               Réinitialiser
             </Button>

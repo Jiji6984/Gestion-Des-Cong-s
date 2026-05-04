@@ -1,11 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { CalendarCheck } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { supabase } from "@/lib/supabase";
 
 export default function LoginPage() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [motDePasse, setMotDePasse] = useState("");
   const [chargement, setChargement] = useState(false);
@@ -16,10 +19,20 @@ export default function LoginPage() {
     setErreur("");
     setChargement(true);
 
-    // TODO: intégrer Supabase Auth
-    await new Promise((r) => setTimeout(r, 1000));
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password: motDePasse,
+    });
+
     setChargement(false);
-    setErreur("Email ou mot de passe incorrect.");
+
+    if (error) {
+      setErreur("Email ou mot de passe incorrect.");
+      return;
+    }
+
+    router.push("/dashboard");
+    router.refresh();
   };
 
   return (
