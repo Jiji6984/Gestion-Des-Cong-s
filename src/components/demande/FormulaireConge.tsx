@@ -83,7 +83,7 @@ export function FormulaireConge() {
         validateur_id: null,
       })
       .select("id")
-      .single();
+      .single<{ id: string }>();
 
     if (error || !nouvelleDemande) {
       setChargement(false);

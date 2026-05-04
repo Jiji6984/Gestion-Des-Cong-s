@@ -35,7 +35,7 @@ export default function LoginPage() {
       .from("employes")
       .select("role")
       .eq("id", data.user.id)
-      .single();
+      .single<{ role: string }>();
 
     const role = employe?.role ?? "employe";
 
