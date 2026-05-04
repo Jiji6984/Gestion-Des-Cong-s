@@ -70,22 +70,35 @@ export function FormulaireConge() {
 
     const nb_jours = calculerJours();
 
-    const { error } = await supabase.from("demandes_conge").insert({
-      employe_id: user.id,
-      type_conge_id: form.type_conge_id,
-      date_debut: form.date_debut,
-      date_fin: form.date_fin,
-      nb_jours,
-      motif: form.motif || null,
-      statut: "en_attente",
-      validateur_id: null,
-    });
+    const { data: nouvelleDemande, error } = await supabase
+      .from("demandes_conge")
+      .insert({
+        employe_id: user.id,
+        type_conge_id: form.type_conge_id,
+        date_debut: form.date_debut,
+        date_fin: form.date_fin,
+        nb_jours,
+        motif: form.motif || null,
+        statut: "en_attente",
+        validateur_id: null,
+      })
+      .select("id")
+      .single();
 
-    setChargement(false);
-    if (error) {
+    if (error || !nouvelleDemande) {
+      setChargement(false);
       setErreurs({ global: "Une erreur est survenue. Veuillez réessayer." });
       return;
     }
+
+    // Notifier le manager par email (Level 1)
+    await fetch("/api/notifier-validateur", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ demande_id: nouvelleDemande.id }),
+    });
+
+    setChargement(false);
     setEnvoye(true);
   };
 
