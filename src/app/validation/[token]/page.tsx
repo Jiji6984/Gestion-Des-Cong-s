@@ -43,17 +43,7 @@ export default function ValidationPage({ params }: { params: Promise<{ token: st
           types_conge ( nom )
         `)
         .eq("token_validation", token)
-        .single<{
-          id: string;
-          date_debut: string;
-          date_fin: string;
-          nb_jours: number;
-          motif: string | null;
-          soumis_le: string;
-          statut: string;
-          employes: { nom: string; prenom: string; email: string } | null;
-          types_conge: { nom: string } | null;
-        }>();
+        .single();
 
       if (!data) { setEtat("invalide"); return; }
 
