@@ -1,9 +1,9 @@
-import { createClient } from "@supabase/supabase-js";
+import { createBrowserClient } from "@supabase/ssr";
 
-// Fallbacks vides évitent un crash au build si les vars d'env ne sont pas encore définies.
-// En production, NEXT_PUBLIC_SUPABASE_URL et NEXT_PUBLIC_SUPABASE_ANON_KEY
-// doivent être configurées dans les variables d'environnement Vercel.
+// createBrowserClient (from @supabase/ssr) stocke la session dans les cookies
+// au lieu de localStorage — indispensable pour que le middleware SSR puisse
+// lire la session et effectuer les redirections correctement.
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://placeholder.supabase.co";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "placeholder-anon-key";
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey);
