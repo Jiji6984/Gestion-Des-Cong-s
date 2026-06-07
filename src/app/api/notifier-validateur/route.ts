@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
     .from("demandes_conge")
     .select(`
       id, date_debut, date_fin, nb_jours, motif, soumis_le,
-      employes ( id, nom, prenom, email, manager_id ),
+      employes!employe_id ( id, nom, prenom, email, manager_id ),
       types_conge ( nom )
     `)
     .eq("id", demande_id)

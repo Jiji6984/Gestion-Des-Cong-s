@@ -42,7 +42,7 @@ export function TableauDemandes() {
       .from("demandes_conge")
       .select(`
         id, employe_id, date_debut, date_fin, nb_jours, statut, motif, soumis_le,
-        employes ( nom, prenom, email ),
+        employes!employe_id ( nom, prenom, email ),
         types_conge ( nom )
       `)
       .order("soumis_le", { ascending: false });

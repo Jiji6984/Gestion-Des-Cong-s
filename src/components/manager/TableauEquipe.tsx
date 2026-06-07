@@ -48,7 +48,7 @@ export function TableauEquipe({ managerId }: { managerId: string }) {
       .from("demandes_conge")
       .select(`
         id, date_debut, date_fin, nb_jours, statut, motif, soumis_le,
-        employes ( nom, prenom ),
+        employes!employe_id ( nom, prenom ),
         types_conge ( nom )
       `)
       .in("employe_id", ids)

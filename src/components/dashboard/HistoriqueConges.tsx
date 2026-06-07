@@ -40,7 +40,7 @@ export function HistoriqueConges() {
           statut,
           commentaire_validateur,
           soumis_le,
-          types_conge ( nom )
+          types_conge!type_conge_id ( nom )
         `)
         .eq("employe_id", user.id)
         .order("soumis_le", { ascending: false })

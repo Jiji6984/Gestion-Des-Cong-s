@@ -39,7 +39,7 @@ export default function ValidationPage({ params }: { params: Promise<{ token: st
         .from("demandes_conge")
         .select(`
           id, date_debut, date_fin, nb_jours, motif, soumis_le, statut,
-          employes ( nom, prenom, email ),
+          employes!employe_id ( nom, prenom, email ),
           types_conge ( nom )
         `)
         .eq("token_validation", token)
