@@ -64,23 +64,27 @@ export function ListeEmployes() {
     setChargement(true);
     const { data } = await supabase
       .from("employes")
-      .select(`
-        id, nom, prenom, email, role, departement, manager_id,
-        managers:employes!manager_id ( nom, prenom )
-      `)
+      .select("id, nom, prenom, email, role, departement, manager_id")
       .order("nom");
 
+    const rows = data ?? [];
+    // Résoudre les noms de managers en JS (évite les problèmes de self-join PostgREST)
+    const byId = Object.fromEntries(rows.map((e: any) => [e.id, e]));
+
     setEmployes(
-      (data ?? []).map((e: any) => ({
-        id: e.id,
-        nom: e.nom,
-        prenom: e.prenom,
-        email: e.email,
-        role: e.role,
-        departement: e.departement,
-        manager_id: e.manager_id,
-        manager_nom: e.managers ? `${e.managers.prenom} ${e.managers.nom}` : null,
-      }))
+      rows.map((e: any) => {
+        const mgr = e.manager_id ? byId[e.manager_id] : null;
+        return {
+          id: e.id,
+          nom: e.nom,
+          prenom: e.prenom,
+          email: e.email,
+          role: e.role,
+          departement: e.departement,
+          manager_id: e.manager_id,
+          manager_nom: mgr ? `${mgr.prenom} ${mgr.nom}` : null,
+        };
+      })
     );
     setChargement(false);
   };
