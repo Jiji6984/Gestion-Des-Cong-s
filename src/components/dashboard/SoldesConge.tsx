@@ -23,13 +23,17 @@ export function SoldesConge() {
       if (!user) return;
 
       const annee = new Date().getFullYear();
+      // Cherche l'année courante, sinon l'année précédente (transition annuelle)
       const { data } = await supabase
         .from("vue_soldes_conge")
         .select("*")
         .eq("employe_id", user.id)
-        .eq("annee", annee);
+        .in("annee", [annee, annee - 1])
+        .order("annee", { ascending: false });
 
-      setSoldes(data ?? []);
+      // Garder uniquement l'année la plus récente disponible
+      const anneeDisponible = data?.[0]?.annee ?? annee;
+      setSoldes((data ?? []).filter((s: any) => s.annee === anneeDisponible));
       setChargement(false);
     };
     charger();

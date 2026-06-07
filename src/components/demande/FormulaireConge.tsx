@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input, Select, Textarea } from "@/components/ui/Input";
@@ -14,6 +15,7 @@ interface TypeConge {
 }
 
 export function FormulaireConge() {
+  const router = useRouter();
   const [types, setTypes] = useState<TypeConge[]>([]);
   const [envoye, setEnvoye] = useState(false);
   const [chargement, setChargement] = useState(false);
@@ -100,6 +102,8 @@ export function FormulaireConge() {
 
     setChargement(false);
     setEnvoye(true);
+    // Redirection vers le dashboard après 2 secondes
+    setTimeout(() => router.push("/dashboard"), 2000);
   };
 
   const reinitialiser = () => {
