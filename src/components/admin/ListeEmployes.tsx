@@ -160,10 +160,10 @@ export function ListeEmployes() {
       .update({
         prenom:      form.prenom,
         nom:         form.nom,
+        email:       form.email,
         role:        form.role,
         departement: form.departement || null,
         manager_id:  form.manager_id  || null,
-        mis_a_jour_le: new Date().toISOString(),
       })
       .eq("id", employeEdite.id);
 
@@ -328,9 +328,7 @@ export function ListeEmployes() {
                 label="Email"
                 value={form.email}
                 onChange={setField("email")}
-                disabled={modal === "edit"}
                 placeholder="marie.dupont@exemple.fr"
-                className={modal === "edit" ? "bg-gray-50 text-gray-400 cursor-not-allowed" : ""}
               />
 
               {modal === "create" && (
