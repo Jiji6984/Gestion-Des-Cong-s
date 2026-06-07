@@ -36,9 +36,11 @@ export function TableauDemandes() {
   const [chargement, setChargement] = useState(true);
   const [filtre, setFiltre] = useState<StatutDemande | "tous">("tous");
   const [traitement, setTraitement] = useState<string | null>(null);
+  const [erreur, setErreur] = useState<string | null>(null);
 
   const charger = async () => {
-    const { data } = await supabase
+    setErreur(null);
+    const { data, error } = await supabase
       .from("demandes_conge")
       .select(`
         id, employe_id, date_debut, date_fin, nb_jours, statut, motif, soumis_le,
@@ -46,6 +48,13 @@ export function TableauDemandes() {
         types_conge ( nom )
       `)
       .order("soumis_le", { ascending: false });
+
+    if (error) {
+      console.error("TableauDemandes error:", error);
+      setErreur(`${error.code} — ${error.message}`);
+      setChargement(false);
+      return;
+    }
 
     const mapped = (data ?? []).map((d: any) => ({
       id: d.id,
@@ -108,6 +117,10 @@ export function TableauDemandes() {
       <CardContent className="p-0">
         {chargement ? (
           <div className="px-6 py-10 text-center text-sm text-gray-400 animate-pulse">Chargement…</div>
+        ) : erreur ? (
+          <div className="px-6 py-10 text-center text-sm text-red-500 font-mono">
+            Erreur : {erreur}
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
