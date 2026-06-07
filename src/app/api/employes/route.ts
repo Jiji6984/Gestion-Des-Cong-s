@@ -26,11 +26,13 @@ export async function POST(req: NextRequest) {
 
   const supabase = serviceClient();
 
-  // 1. Créer le compte auth
+  // 1. Créer le compte auth avec les métadonnées (le trigger creer_profil_employe
+  //    utilisera raw_user_meta_data->>'nom' et 'prenom' pour créer la ligne employes)
   const { data: authData, error: authError } = await supabase.auth.admin.createUser({
     email,
     password: motDePasse || "MotDePasse@123",
     email_confirm: true,
+    user_metadata: { nom, prenom },
   });
 
   if (authError || !authData.user) {
@@ -38,18 +40,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: msg }, { status: 400 });
   }
 
-  // 2. Créer l'enregistrement dans employes
+  // 2. Le trigger a déjà créé la ligne employes avec nom/prenom/email.
+  //    On met à jour uniquement les champs supplémentaires.
   const { error: empError } = await supabase
     .from("employes")
-    .insert({
-      id: authData.user.id,
-      prenom,
-      nom,
-      email,
-      role: role || "employe",
+    .update({
+      role:        role        || "employe",
       departement: departement || null,
-      manager_id: manager_id || null,
-    });
+      manager_id:  manager_id || null,
+    })
+    .eq("id", authData.user.id);
 
   if (empError) {
     // Rollback : supprimer le compte auth créé

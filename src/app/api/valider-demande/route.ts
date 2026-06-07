@@ -48,13 +48,13 @@ export async function POST(req: NextRequest) {
   const typeConge = demande.types_conge as any;
 
   // 2. Mettre à jour le statut
+  // Note : les triggers set_traite_le et mettre_a_jour_solde s'en chargent automatiquement
   const { error: errUpdate } = await supabase
     .from("demandes_conge")
     .update({
       statut: action,
       commentaire_validateur: commentaire || null,
       validateur_id: validateur_id || null,
-      traite_le: new Date().toISOString(),
     })
     .eq("id", demande_id);
 
@@ -62,26 +62,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Erreur mise à jour" }, { status: 500 });
   }
 
-  // 3. Si approuvé : déduire les jours du solde
-  if (action === "approuve") {
-    const annee = new Date(demande.date_debut).getFullYear();
-    const { data: solde } = await supabase
-      .from("soldes_conge")
-      .select("id, pris")
-      .eq("employe_id", employe.id)
-      .eq("type_conge_id", demande.type_conge_id)
-      .eq("annee", annee)
-      .maybeSingle();
-
-    if (solde) {
-      await supabase
-        .from("soldes_conge")
-        .update({ pris: solde.pris + demande.nb_jours })
-        .eq("id", solde.id);
-    }
-  }
-
-  // 4. Envoyer un email à l'employé
+  // 3. Envoyer un email à l'employé
   const dateDebut = format(new Date(demande.date_debut), "EEEE d MMMM yyyy", { locale: fr });
   const dateFin   = format(new Date(demande.date_fin),   "EEEE d MMMM yyyy", { locale: fr });
 
