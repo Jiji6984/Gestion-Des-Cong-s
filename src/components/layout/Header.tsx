@@ -1,4 +1,4 @@
-import { Bell } from "lucide-react";
+import { NotifBell } from "@/components/layout/NotifBell";
 
 interface HeaderProps {
   titre: string;
@@ -12,10 +12,7 @@ export function Header({ titre, sousTitre }: HeaderProps) {
         <h1 className="text-xl font-semibold text-gray-900">{titre}</h1>
         {sousTitre && <p className="text-sm text-gray-500 mt-0.5">{sousTitre}</p>}
       </div>
-      <button className="relative p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
-        <Bell className="h-5 w-5" />
-        <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-blue-500"></span>
-      </button>
+      <NotifBell />
     </header>
   );
 }
