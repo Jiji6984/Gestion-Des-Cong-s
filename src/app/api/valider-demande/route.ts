@@ -19,18 +19,18 @@ export async function POST(req: NextRequest) {
   const resend = new Resend(process.env.RESEND_API_KEY);
   const supabase = serviceClient();
 
-  const { demande_id } = await req.json();
+  const { demande_id, action, commentaire, validateur_id } = await req.json();
 
-  if (!demande_id) {
-    return NextResponse.json({ error: "demande_id manquant" }, { status: 400 });
+  if (!demande_id || !action || !["approuve", "refuse"].includes(action)) {
+    return NextResponse.json({ error: "Paramètres invalides" }, { status: 400 });
   }
 
-  // Récupérer la demande + token de validation
+  // 1. Récupérer la demande
   const { data: demande, error: errDemande } = await supabase
     .from("demandes_conge")
     .select(`
-      id, date_debut, date_fin, nb_jours, motif, soumis_le, token_validation,
-      employes!employe_id ( id, nom, prenom, email, manager_id ),
+      id, nb_jours, date_debut, date_fin, type_conge_id, statut,
+      employes!employe_id ( id, nom, prenom, email ),
       types_conge ( nom )
     `)
     .eq("id", demande_id)
@@ -40,82 +40,95 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Demande introuvable" }, { status: 404 });
   }
 
-  const employe  = demande.employes as any;
+  if (demande.statut !== "en_attente") {
+    return NextResponse.json({ error: "Demande déjà traitée" }, { status: 409 });
+  }
+
+  const employe = demande.employes as any;
   const typeConge = demande.types_conge as any;
 
-  if (!employe?.manager_id) {
-    return NextResponse.json(
-      { error: "Aucun manager défini pour cet employé" },
-      { status: 422 }
-    );
+  // 2. Mettre à jour le statut
+  const { error: errUpdate } = await supabase
+    .from("demandes_conge")
+    .update({
+      statut: action,
+      commentaire_validateur: commentaire || null,
+      validateur_id: validateur_id || null,
+      traite_le: new Date().toISOString(),
+    })
+    .eq("id", demande_id);
+
+  if (errUpdate) {
+    return NextResponse.json({ error: "Erreur mise à jour" }, { status: 500 });
   }
 
-  // Récupérer le manager
-  const { data: manager, error: errManager } = await supabase
-    .from("employes")
-    .select("nom, prenom, email")
-    .eq("id", employe.manager_id)
-    .single();
+  // 3. Si approuvé : déduire les jours du solde
+  if (action === "approuve") {
+    const annee = new Date(demande.date_debut).getFullYear();
+    const { data: solde } = await supabase
+      .from("soldes_conge")
+      .select("id, pris")
+      .eq("employe_id", employe.id)
+      .eq("type_conge_id", demande.type_conge_id)
+      .eq("annee", annee)
+      .maybeSingle();
 
-  if (errManager || !manager) {
-    return NextResponse.json({ error: "Manager introuvable" }, { status: 404 });
+    if (solde) {
+      await supabase
+        .from("soldes_conge")
+        .update({ pris: solde.pris + demande.nb_jours })
+        .eq("id", solde.id);
+    }
   }
 
-  const dateDebut  = format(new Date(demande.date_debut), "EEEE d MMMM yyyy", { locale: fr });
-  const dateFin    = format(new Date(demande.date_fin),   "EEEE d MMMM yyyy", { locale: fr });
-  const soumisLe   = format(new Date(demande.soumis_le),  "d MMMM yyyy à HH:mm", { locale: fr });
-  const nomEmploye = `${employe.prenom} ${employe.nom}`;
-  const nomManager = `${manager.prenom} ${manager.nom}`;
+  // 4. Envoyer un email à l'employé
+  const dateDebut = format(new Date(demande.date_debut), "EEEE d MMMM yyyy", { locale: fr });
+  const dateFin   = format(new Date(demande.date_fin),   "EEEE d MMMM yyyy", { locale: fr });
 
-  // Construire l'URL de validation
-  const origin = new URL(req.url).origin;
-  const urlValidation = `${origin}/validation/${demande.token_validation}`;
-
-  const { error: errEmail } = await resend.emails.send({
+  await resend.emails.send({
     from: "Gestion des Congés <onboarding@resend.dev>",
-    to: [manager.email],
-    subject: `Nouvelle demande de congé — ${nomEmploye}`,
-    html: emailTemplate({
-      nomManager,
-      nomEmploye,
-      emailEmploye: employe.email,
+    to: [employe.email],
+    subject: action === "approuve"
+      ? "✅ Votre demande de congé a été approuvée"
+      : "❌ Votre demande de congé a été refusée",
+    html: emailEmployeTemplate({
+      nomEmploye: `${employe.prenom} ${employe.nom}`,
       typeConge: typeConge.nom,
       dateDebut,
       dateFin,
       nbJours: demande.nb_jours,
-      motif: demande.motif,
-      soumisLe,
-      urlValidation,
+      statut: action,
+      commentaire: commentaire || null,
     }),
   });
-
-  if (errEmail) {
-    console.error("Erreur Resend:", errEmail);
-    return NextResponse.json({ error: "Échec de l'envoi de l'email" }, { status: 500 });
-  }
 
   return NextResponse.json({ success: true });
 }
 
-function emailTemplate(data: {
-  nomManager: string;
+function emailEmployeTemplate(data: {
   nomEmploye: string;
-  emailEmploye: string;
   typeConge: string;
   dateDebut: string;
   dateFin: string;
   nbJours: number;
-  motif: string | null;
-  soumisLe: string;
-  urlValidation: string;
+  statut: "approuve" | "refuse";
+  commentaire: string | null;
 }) {
+  const approuve = data.statut === "approuve";
+  const couleur  = approuve ? "#16a34a" : "#dc2626";
+  const icone    = approuve ? "✅" : "❌";
+  const titre    = approuve ? "Demande approuvée" : "Demande refusée";
+  const message  = approuve
+    ? `Votre demande de congé a été <strong style="color:#16a34a;">approuvée</strong>. Bon repos !`
+    : `Votre demande de congé a été <strong style="color:#dc2626;">refusée</strong>. Contactez votre responsable pour plus d'informations.`;
+
   return `
 <!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Nouvelle demande de congé</title>
+  <title>${icone} ${titre}</title>
 </head>
 <body style="margin:0;padding:0;background-color:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f9fafb;padding:40px 0;">
@@ -125,7 +138,7 @@ function emailTemplate(data: {
 
           <!-- Header -->
           <tr>
-            <td style="background-color:#2563eb;padding:24px 32px;">
+            <td style="background-color:${couleur};padding:24px 32px;">
               <p style="margin:0;font-size:18px;font-weight:600;color:#ffffff;">
                 📅 Gestion des Congés
               </p>
@@ -136,21 +149,14 @@ function emailTemplate(data: {
           <tr>
             <td style="padding:32px;">
               <p style="margin:0 0 8px;font-size:16px;color:#111827;font-weight:600;">
-                Bonjour ${data.nomManager},
+                Bonjour ${data.nomEmploye},
               </p>
               <p style="margin:0 0 24px;font-size:14px;color:#6b7280;line-height:1.6;">
-                Une nouvelle demande de congé vient d'être soumise par <strong style="color:#111827;">${data.nomEmploye}</strong> et nécessite votre validation.
+                ${message}
               </p>
 
               <!-- Fiche demande -->
               <table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb;margin-bottom:24px;">
-                <tr>
-                  <td style="padding:16px 20px;border-bottom:1px solid #e5e7eb;">
-                    <p style="margin:0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#9ca3af;">Employé</p>
-                    <p style="margin:4px 0 0;font-size:14px;color:#111827;font-weight:500;">${data.nomEmploye}</p>
-                    <p style="margin:2px 0 0;font-size:13px;color:#6b7280;">${data.emailEmploye}</p>
-                  </td>
-                </tr>
                 <tr>
                   <td style="padding:16px 20px;border-bottom:1px solid #e5e7eb;">
                     <p style="margin:0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#9ca3af;">Type de congé</p>
@@ -174,35 +180,22 @@ function emailTemplate(data: {
                   </td>
                 </tr>
                 <tr>
-                  <td style="padding:16px 20px;${data.motif ? "border-bottom:1px solid #e5e7eb;" : ""}">
+                  <td style="padding:16px 20px;${data.commentaire ? "border-bottom:1px solid #e5e7eb;" : ""}">
                     <p style="margin:0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#9ca3af;">Durée</p>
                     <p style="margin:4px 0 0;font-size:14px;color:#111827;font-weight:500;">${data.nbJours} jour${data.nbJours > 1 ? "s" : ""} ouvré${data.nbJours > 1 ? "s" : ""}</p>
                   </td>
                 </tr>
-                ${data.motif ? `
+                ${data.commentaire ? `
                 <tr>
                   <td style="padding:16px 20px;">
-                    <p style="margin:0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#9ca3af;">Motif</p>
-                    <p style="margin:4px 0 0;font-size:14px;color:#111827;">${data.motif}</p>
+                    <p style="margin:0;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#9ca3af;">Commentaire</p>
+                    <p style="margin:4px 0 0;font-size:14px;color:#111827;">${data.commentaire}</p>
                   </td>
                 </tr>` : ""}
               </table>
 
-              <!-- Bouton de validation -->
-              <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
-                <tr>
-                  <td align="center">
-                    <a href="${data.urlValidation}"
-                       style="display:inline-block;background-color:#2563eb;color:#ffffff;font-size:14px;font-weight:600;padding:12px 32px;border-radius:8px;text-decoration:none;">
-                      Traiter la demande →
-                    </a>
-                  </td>
-                </tr>
-              </table>
-
-              <p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.6;">
-                Ou copiez ce lien dans votre navigateur :<br/>
-                <a href="${data.urlValidation}" style="color:#2563eb;word-break:break-all;">${data.urlValidation}</a>
+              <p style="margin:0;font-size:13px;color:#6b7280;line-height:1.6;">
+                Connectez-vous à votre espace pour consulter l'historique de vos demandes.
               </p>
             </td>
           </tr>
@@ -211,7 +204,7 @@ function emailTemplate(data: {
           <tr>
             <td style="padding:16px 32px;background:#f9fafb;border-top:1px solid #e5e7eb;">
               <p style="margin:0;font-size:12px;color:#9ca3af;text-align:center;">
-                Demande soumise le ${data.soumisLe} · Gestion des Congés
+                Gestion des Congés
               </p>
             </td>
           </tr>

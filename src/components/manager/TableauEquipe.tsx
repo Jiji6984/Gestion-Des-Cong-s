@@ -75,11 +75,16 @@ export function TableauEquipe({ managerId }: { managerId: string }) {
 
   const changer = async (id: string, statut: StatutDemande) => {
     setTraitement(id);
-    await supabase
-      .from("demandes_conge")
-      .update({ statut, validateur_id: managerId })
-      .eq("id", id);
-    setDemandes((prev) => prev.map((d) => d.id === id ? { ...d, statut } : d));
+
+    const res = await fetch("/api/valider-demande", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ demande_id: id, action: statut, validateur_id: managerId }),
+    });
+
+    if (res.ok) {
+      setDemandes((prev) => prev.map((d) => d.id === id ? { ...d, statut } : d));
+    }
     setTraitement(null);
   };
 

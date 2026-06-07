@@ -33,7 +33,7 @@ export function ListeEmployes() {
         .from("employes")
         .select(`
           id, nom, prenom, email, role, departement,
-          managers:manager_id ( nom, prenom )
+          managers:employes!manager_id ( nom, prenom )
         `)
         .order("nom");
 

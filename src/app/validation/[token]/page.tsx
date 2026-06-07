@@ -5,7 +5,6 @@ import { CalendarCheck, CheckCircle, XCircle, AlertTriangle } from "lucide-react
 import { Button } from "@/components/ui/Button";
 import { Textarea } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
-import { supabase } from "@/lib/supabase";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import type { StatutDemande } from "@/lib/database.types";
@@ -35,32 +34,25 @@ export default function ValidationPage({ params }: { params: Promise<{ token: st
 
   useEffect(() => {
     const charger = async () => {
-      const { data } = await supabase
-        .from("demandes_conge")
-        .select(`
-          id, date_debut, date_fin, nb_jours, motif, soumis_le, statut,
-          employes!employe_id ( nom, prenom, email ),
-          types_conge ( nom )
-        `)
-        .eq("token_validation", token)
-        .single();
+      const res = await fetch(`/api/demande-par-token?token=${token}`);
+      if (!res.ok) { setEtat("invalide"); return; }
 
-      if (!data) { setEtat("invalide"); return; }
+      const data = await res.json();
 
       if (data.statut !== "en_attente") { setEtat("deja_traite"); return; }
 
       setDemande({
         id: data.id,
-        employe_prenom: (data.employes as any)?.prenom ?? "—",
-        employe_nom: (data.employes as any)?.nom ?? "—",
-        employe_email: (data.employes as any)?.email ?? "—",
-        type_nom: (data.types_conge as any)?.nom ?? "—",
-        date_debut: data.date_debut,
-        date_fin: data.date_fin,
-        nb_jours: data.nb_jours,
-        motif: data.motif,
-        soumis_le: data.soumis_le,
-        statut: data.statut,
+        employe_prenom: data.employes?.prenom ?? "—",
+        employe_nom:    data.employes?.nom    ?? "—",
+        employe_email:  data.employes?.email  ?? "—",
+        type_nom:       data.types_conge?.nom ?? "—",
+        date_debut:  data.date_debut,
+        date_fin:    data.date_fin,
+        nb_jours:    data.nb_jours,
+        motif:       data.motif,
+        soumis_le:   data.soumis_le,
+        statut:      data.statut,
       });
       setEtat("initial");
     };
@@ -71,16 +63,24 @@ export default function ValidationPage({ params }: { params: Promise<{ token: st
     if (!demande) return;
     setTraitement(action);
 
-    await supabase
-      .from("demandes_conge")
-      .update({
-        statut: action,
-        commentaire_validateur: commentaire || null,
-      })
-      .eq("id", demande.id);
+    const res = await fetch("/api/valider-demande", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        demande_id: demande.id,
+        action,
+        commentaire: commentaire || null,
+      }),
+    });
 
     setTraitement(null);
-    setEtat(action);
+
+    if (res.ok || res.status === 409) {
+      setEtat(action);
+    } else {
+      const err = await res.json().catch(() => ({}));
+      alert(`Erreur : ${err.error ?? "Impossible de traiter la demande."}`);
+    }
   };
 
   if (etat === "chargement") {

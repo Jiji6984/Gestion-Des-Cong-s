@@ -81,12 +81,18 @@ export function TableauDemandes() {
     setTraitement(id);
     const { data: { user } } = await supabase.auth.getUser();
 
-    await supabase
-      .from("demandes_conge")
-      .update({ statut, validateur_id: user?.id })
-      .eq("id", id);
+    const res = await fetch("/api/valider-demande", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ demande_id: id, action: statut, validateur_id: user?.id }),
+    });
 
-    setDemandes((prev) => prev.map((d) => d.id === id ? { ...d, statut } : d));
+    if (res.ok) {
+      setDemandes((prev) => prev.map((d) => d.id === id ? { ...d, statut } : d));
+    } else {
+      const err = await res.json().catch(() => ({}));
+      setErreur(`Impossible de traiter : ${err.error ?? "erreur inconnue"}`);
+    }
     setTraitement(null);
   };
 
