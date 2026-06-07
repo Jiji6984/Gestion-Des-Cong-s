@@ -62,11 +62,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Erreur mise à jour" }, { status: 500 });
   }
 
-  // 3. Envoyer un email à l'employé
+  // 3. Envoyer un email à l'employé (best-effort — n'empêche pas la validation)
   const dateDebut = format(new Date(demande.date_debut), "EEEE d MMMM yyyy", { locale: fr });
   const dateFin   = format(new Date(demande.date_fin),   "EEEE d MMMM yyyy", { locale: fr });
 
-  await resend.emails.send({
+  const { error: errEmail } = await resend.emails.send({
     from: "Gestion des Congés <onboarding@resend.dev>",
     to: [employe.email],
     subject: action === "approuve"
@@ -83,7 +83,11 @@ export async function POST(req: NextRequest) {
     }),
   });
 
-  return NextResponse.json({ success: true });
+  if (errEmail) {
+    console.error("Erreur envoi email employé:", errEmail);
+  }
+
+  return NextResponse.json({ success: true, emailEnvoye: !errEmail });
 }
 
 function emailEmployeTemplate(data: {
