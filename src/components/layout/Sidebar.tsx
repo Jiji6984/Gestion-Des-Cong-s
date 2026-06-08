@@ -15,7 +15,8 @@ const navEmploye = [
 ];
 
 const navManager = [
-  { href: "/manager", label: "Demandes de l'équipe", icon: UsersRound },
+  { href: "/manager",  label: "Mon équipe",          icon: UsersRound },
+  { href: "/demande",  label: "Nouvelle demande",    icon: CalendarPlus },
 ];
 
 const navAdmin = [
