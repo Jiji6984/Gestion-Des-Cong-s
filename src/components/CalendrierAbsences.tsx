@@ -32,8 +32,8 @@ function buildJourMap(absences: Absence[], debutGrille: Date, finGrille: Date): 
   for (const a of absences) {
     const start = parseISO(a.date_debut);
     const end   = parseISO(a.date_fin);
-    let cur    = new Date(Math.max(debutGrille.getTime(), start.getTime()));
-    const stop = new Date(Math.min(finGrille.getTime(),   end.getTime()));
+    let cur     = new Date(Math.max(debutGrille.getTime(), start.getTime()));
+    const stop  = new Date(Math.min(finGrille.getTime(),   end.getTime()));
     while (cur <= stop) {
       const key = dateStr(cur);
       if (!map[key]) map[key] = [];
@@ -44,32 +44,84 @@ function buildJourMap(absences: Absence[], debutGrille: Date, finGrille: Date): 
   return map;
 }
 
-export function CalendrierAbsences() {
+interface Props {
+  userId: string;
+  role: "employe" | "manager" | "admin";
+}
+
+export function CalendrierAbsences({ userId, role }: Props) {
   const [moisCourant, setMois]  = useState(new Date());
   const [absences, setAbsences] = useState<Absence[]>([]);
   const [chargement, setCharge] = useState(true);
 
   useEffect(() => {
+    let annule = false;
+
     const charger = async () => {
       setCharge(true);
 
       const debutMoisStr = format(startOfMonth(moisCourant), "yyyy-MM-dd");
       const finMoisStr   = format(endOfMonth(moisCourant),   "yyyy-MM-dd");
 
-      // RLS gère ce que l'utilisateur peut voir :
-      // - admin/manager → toutes les demandes
-      // - employé → ses propres demandes
-      const { data, error } = await supabase
-        .from("demandes_conge")
-        .select(`
-          employe_id, date_debut, date_fin,
-          employes!employe_id ( prenom, nom ),
-          types_conge!type_conge_id ( nom, couleur )
-        `)
-        .eq("statut", "approuve")
-        .lte("date_debut", finMoisStr)
-        .gte("date_fin", debutMoisStr)
-        .order("date_debut");
+      const SELECT = `
+        employe_id, date_debut, date_fin,
+        employes!employe_id ( prenom, nom ),
+        types_conge!type_conge_id ( nom, couleur )
+      `;
+
+      let data: any[] | null = null;
+      let error: any = null;
+
+      if (role === "manager") {
+        // Étape 1 : récupérer les IDs de l'équipe
+        const { data: equipe, error: errEquipe } = await supabase
+          .from("employes")
+          .select("id")
+          .eq("manager_id", userId);
+
+        if (annule) return;
+
+        if (errEquipe) {
+          console.error("CalendrierAbsences – equipe error:", errEquipe);
+          setCharge(false);
+          return;
+        }
+
+        const ids = (equipe ?? []).map((e: any) => e.id);
+
+        if (ids.length === 0) {
+          if (!annule) { setAbsences([]); setCharge(false); }
+          return;
+        }
+
+        // Étape 2 : absences filtrées sur l'équipe
+        const res = await supabase
+          .from("demandes_conge")
+          .select(SELECT)
+          .in("employe_id", ids)
+          .eq("statut", "approuve")
+          .lte("date_debut", finMoisStr)
+          .gte("date_fin", debutMoisStr)
+          .order("date_debut");
+
+        data  = res.data;
+        error = res.error;
+
+      } else {
+        // admin → toutes ; employe → RLS ne montre que les siennes
+        const res = await supabase
+          .from("demandes_conge")
+          .select(SELECT)
+          .eq("statut", "approuve")
+          .lte("date_debut", finMoisStr)
+          .gte("date_fin", debutMoisStr)
+          .order("date_debut");
+
+        data  = res.data;
+        error = res.error;
+      }
+
+      if (annule) return;
 
       if (error) {
         console.error("CalendrierAbsences error:", error);
@@ -92,7 +144,8 @@ export function CalendrierAbsences() {
     };
 
     charger();
-  }, [moisCourant]);
+    return () => { annule = true; };
+  }, [moisCourant, userId, role]);
 
   /* ——— Construction de la grille ——— */
   const debutMois   = startOfMonth(moisCourant);

@@ -39,7 +39,7 @@ export default async function CalendrierPage() {
       role={role}
       nomUtilisateur={nomComplet}
     >
-      <CalendrierAbsences />
+      <CalendrierAbsences userId={user.id} role={role} />
     </AppLayout>
   );
 }
