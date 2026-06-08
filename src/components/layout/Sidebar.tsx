@@ -62,7 +62,7 @@ export function Sidebar({ role = "employe", nomUtilisateur = "Utilisateur" }: Si
             href={href}
             className={clsx(
               "sidebar-link",
-              pathname === href || pathname.startsWith(href + "/")
+              pathname === href
                 ? "sidebar-link-active"
                 : "sidebar-link-inactive"
             )}
