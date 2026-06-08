@@ -43,58 +43,70 @@ export async function POST(req: NextRequest) {
   const employe  = demande.employes as any;
   const typeConge = demande.types_conge as any;
 
-  if (!employe?.manager_id) {
-    return NextResponse.json(
-      { error: "Aucun manager défini pour cet employé" },
-      { status: 422 }
-    );
+  // Récupérer le validateur : manager direct ou, à défaut, tous les admins
+  let validateurs: { nom: string; prenom: string; email: string }[] = [];
+
+  if (employe?.manager_id) {
+    const { data: mgr } = await supabase
+      .from("employes")
+      .select("nom, prenom, email")
+      .eq("id", employe.manager_id)
+      .single();
+    if (mgr) validateurs = [mgr];
   }
 
-  // Récupérer le manager
-  const { data: manager, error: errManager } = await supabase
-    .from("employes")
-    .select("nom, prenom, email")
-    .eq("id", employe.manager_id)
-    .single();
+  if (validateurs.length === 0) {
+    // Pas de manager → notifier tous les admins
+    const { data: admins } = await supabase
+      .from("employes")
+      .select("nom, prenom, email")
+      .eq("role", "admin");
+    validateurs = admins ?? [];
+  }
 
-  if (errManager || !manager) {
-    return NextResponse.json({ error: "Manager introuvable" }, { status: 404 });
+  if (validateurs.length === 0) {
+    return NextResponse.json(
+      { error: "Aucun validateur trouvé (ni manager, ni admin)" },
+      { status: 422 }
+    );
   }
 
   const dateDebut  = format(new Date(demande.date_debut), "EEEE d MMMM yyyy", { locale: fr });
   const dateFin    = format(new Date(demande.date_fin),   "EEEE d MMMM yyyy", { locale: fr });
   const soumisLe   = format(new Date(demande.soumis_le),  "d MMMM yyyy à HH:mm", { locale: fr });
   const nomEmploye = `${employe.prenom} ${employe.nom}`;
-  const nomManager = `${manager.prenom} ${manager.nom}`;
 
   // Construire l'URL de validation
   const origin = new URL(req.url).origin;
   const urlValidation = `${origin}/validation/${demande.token_validation}`;
 
-  const { error: errEmail } = await resend.emails.send({
-    from: "Gestion des Congés <onboarding@resend.dev>",
-    to: [manager.email],
-    subject: `Nouvelle demande de congé — ${nomEmploye}`,
-    html: emailTemplate({
-      nomManager,
-      nomEmploye,
-      emailEmploye: employe.email,
-      typeConge: typeConge.nom,
-      dateDebut,
-      dateFin,
-      nbJours: demande.nb_jours,
-      motif: demande.motif,
-      soumisLe,
-      urlValidation,
-    }),
-  });
+  // Envoyer à chaque validateur
+  const resultats = await Promise.allSettled(
+    validateurs.map((v) =>
+      resend.emails.send({
+        from: "Gestion des Congés <onboarding@resend.dev>",
+        to: [v.email],
+        subject: `Nouvelle demande de congé — ${nomEmploye}`,
+        html: emailTemplate({
+          nomManager: `${v.prenom} ${v.nom}`,
+          nomEmploye,
+          emailEmploye: employe.email,
+          typeConge: typeConge.nom,
+          dateDebut,
+          dateFin,
+          nbJours: demande.nb_jours,
+          motif: demande.motif,
+          soumisLe,
+          urlValidation,
+        }),
+      })
+    )
+  );
 
-  if (errEmail) {
-    console.error("Erreur Resend:", errEmail);
-    return NextResponse.json({ error: "Échec de l'envoi de l'email" }, { status: 500 });
-  }
+  const echecs = resultats.filter((r) => r.status === "rejected");
+  if (echecs.length > 0) console.error("Erreurs Resend:", echecs);
 
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ success: true, envoyes: resultats.length - echecs.length });
 }
 
 function emailTemplate(data: {
