@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { clsx } from "clsx";
 import {
   LayoutDashboard, CalendarPlus, ClipboardList,
-  Users, LogOut, CalendarCheck, UsersRound, UserCircle, Wallet,
+  Users, LogOut, CalendarCheck, UsersRound, UserCircle, Wallet, Tag,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
@@ -20,9 +20,10 @@ const navManager = [
 ];
 
 const navAdmin = [
-  { href: "/admin",          label: "Toutes les demandes", icon: ClipboardList },
-  { href: "/admin/employes", label: "Employés",            icon: Users },
-  { href: "/admin/soldes",   label: "Soldes",              icon: Wallet },
+  { href: "/admin",               label: "Toutes les demandes", icon: ClipboardList },
+  { href: "/admin/employes",      label: "Employés",            icon: Users },
+  { href: "/admin/soldes",        label: "Soldes",              icon: Wallet },
+  { href: "/admin/types-conge",   label: "Types de congés",     icon: Tag },
 ];
 
 const roleConfig = {
