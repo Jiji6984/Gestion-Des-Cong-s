@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input, Select, Textarea } from "@/components/ui/Input";
 import { supabase } from "@/lib/supabase";
-import { CheckCircle } from "lucide-react";
+import { CheckCircle, AlertTriangle, Info } from "lucide-react";
 
 interface TypeConge {
   id: string;
@@ -14,14 +14,25 @@ interface TypeConge {
   limite_jours: number | null;
 }
 
+interface Solde {
+  total: number;
+  pris: number;
+  restant: number;
+}
+
 export function FormulaireConge() {
   const router = useRouter();
-  const [types, setTypes] = useState<TypeConge[]>([]);
-  const [envoye, setEnvoye] = useState(false);
+  const [types, setTypes]         = useState<TypeConge[]>([]);
+  const [envoye, setEnvoye]       = useState(false);
   const [chargement, setChargement] = useState(false);
   const [form, setForm] = useState({ type_conge_id: "", date_debut: "", date_fin: "", motif: "" });
-  const [erreurs, setErreurs] = useState<Record<string, string>>({});
+  const [erreurs, setErreurs]     = useState<Record<string, string>>({});
 
+  // Solde du type sélectionné
+  const [solde, setSolde]               = useState<Solde | null>(null);
+  const [chargementSolde, setLoadSolde] = useState(false);
+
+  /* ——— Chargement des types ——— */
   useEffect(() => {
     supabase
       .from("types_conge")
@@ -31,15 +42,46 @@ export function FormulaireConge() {
       .then(({ data }) => setTypes(data ?? []));
   }, []);
 
+  /* ——— Chargement du solde quand le type change ——— */
+  useEffect(() => {
+    if (!form.type_conge_id) { setSolde(null); return; }
+
+    const type = types.find((t) => t.id === form.type_conge_id);
+    if (!type?.limite_jours) { setSolde(null); return; } // type illimité → pas de vérification
+
+    const fetchSolde = async () => {
+      setLoadSolde(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setLoadSolde(false); return; }
+
+      const annee = new Date().getFullYear();
+      const { data } = await supabase
+        .from("vue_soldes_conge")
+        .select("total, pris, restant")
+        .eq("employe_id", user.id)
+        .eq("type_conge_id", form.type_conge_id)
+        .in("annee", [annee, annee - 1])
+        .order("annee", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      setSolde(data ? { total: data.total, pris: data.pris, restant: data.restant } : null);
+      setLoadSolde(false);
+    };
+
+    fetchSolde();
+  }, [form.type_conge_id, types]);
+
   const options = [
     { value: "", label: "Sélectionnez un type" },
     ...types.map((t) => ({ value: t.id, label: t.nom })),
   ];
 
+  /* ——— Calcul des jours ouvrés ——— */
   const calculerJours = () => {
     if (!form.date_debut || !form.date_fin) return 0;
     const debut = new Date(form.date_debut);
-    const fin = new Date(form.date_fin);
+    const fin   = new Date(form.date_fin);
     let jours = 0;
     const cur = new Date(debut);
     while (cur <= fin) {
@@ -50,16 +92,23 @@ export function FormulaireConge() {
     return jours;
   };
 
+  const nbJours = calculerJours();
+  const soldeInsuffisant = solde !== null && nbJours > 0 && nbJours > solde.restant;
+
+  /* ——— Validation ——— */
   const valider = () => {
     const e: Record<string, string> = {};
     if (!form.type_conge_id) e.type_conge_id = "Veuillez sélectionner un type.";
-    if (!form.date_debut) e.date_debut = "La date de début est requise.";
-    if (!form.date_fin) e.date_fin = "La date de fin est requise.";
+    if (!form.date_debut)    e.date_debut     = "La date de début est requise.";
+    if (!form.date_fin)      e.date_fin       = "La date de fin est requise.";
     if (form.date_debut && form.date_fin && form.date_fin < form.date_debut)
       e.date_fin = "La date de fin doit être après la date de début.";
+    if (soldeInsuffisant)
+      e.global = `Solde insuffisant : il vous reste ${solde!.restant}j, vous en demandez ${nbJours}j.`;
     return e;
   };
 
+  /* ——— Soumission ——— */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const errs = valider();
@@ -70,18 +119,16 @@ export function FormulaireConge() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const nb_jours = calculerJours();
-
     const { data: nouvelleDemande, error } = await supabase
       .from("demandes_conge")
       .insert({
-        employe_id: user.id,
+        employe_id:    user.id,
         type_conge_id: form.type_conge_id,
-        date_debut: form.date_debut,
-        date_fin: form.date_fin,
-        nb_jours,
-        motif: form.motif || null,
-        statut: "en_attente",
+        date_debut:    form.date_debut,
+        date_fin:      form.date_fin,
+        nb_jours:      nbJours,
+        motif:         form.motif || null,
+        statut:        "en_attente",
         validateur_id: null,
       })
       .select("id")
@@ -93,7 +140,6 @@ export function FormulaireConge() {
       return;
     }
 
-    // Notifier le manager par email (Level 1)
     await fetch("/api/notifier-validateur", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -102,15 +148,16 @@ export function FormulaireConge() {
 
     setChargement(false);
     setEnvoye(true);
-    // Redirection vers le dashboard après 2 secondes
     setTimeout(() => router.push("/dashboard"), 2000);
   };
 
   const reinitialiser = () => {
     setEnvoye(false);
     setForm({ type_conge_id: "", date_debut: "", date_fin: "", motif: "" });
+    setSolde(null);
   };
 
+  /* ——— Écran de succès ——— */
   if (envoye) {
     return (
       <Card>
@@ -132,8 +179,6 @@ export function FormulaireConge() {
     );
   }
 
-  const nbJours = calculerJours();
-
   return (
     <Card>
       <CardHeader>
@@ -141,6 +186,7 @@ export function FormulaireConge() {
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-5">
+
           <Select
             id="type"
             label="Type de congé"
@@ -149,6 +195,45 @@ export function FormulaireConge() {
             onChange={(e) => setForm({ ...form, type_conge_id: e.target.value })}
             error={erreurs.type_conge_id}
           />
+
+          {/* Indicateur de solde */}
+          {form.type_conge_id && !chargementSolde && solde !== null && (
+            <div className={`rounded-lg px-4 py-3 border flex items-start gap-3 ${
+              soldeInsuffisant
+                ? "bg-red-50 border-red-200"
+                : "bg-blue-50 border-blue-100"
+            }`}>
+              {soldeInsuffisant
+                ? <AlertTriangle className="h-4 w-4 text-red-500 flex-shrink-0 mt-0.5" />
+                : <Info className="h-4 w-4 text-blue-500 flex-shrink-0 mt-0.5" />
+              }
+              <div className="text-sm">
+                <p className={`font-medium ${soldeInsuffisant ? "text-red-700" : "text-blue-700"}`}>
+                  {soldeInsuffisant
+                    ? `Solde insuffisant — ${solde.restant}j restant${solde.restant > 1 ? "s" : ""} sur ${solde.total}j`
+                    : `Solde disponible — ${solde.restant}j restant${solde.restant > 1 ? "s" : ""} sur ${solde.total}j`
+                  }
+                </p>
+                {nbJours > 0 && (
+                  <p className={`mt-0.5 ${soldeInsuffisant ? "text-red-600" : "text-blue-600"}`}>
+                    {soldeInsuffisant
+                      ? `Vous demandez ${nbJours}j mais il ne vous en reste que ${solde.restant}j.`
+                      : `Après cette demande : ${solde.restant - nbJours}j restants.`
+                    }
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Type illimité = pas de solde à vérifier */}
+          {form.type_conge_id && !chargementSolde && solde === null &&
+            types.find((t) => t.id === form.type_conge_id)?.limite_jours === null && (
+            <div className="rounded-lg px-4 py-3 border border-gray-100 bg-gray-50 flex items-center gap-2">
+              <Info className="h-4 w-4 text-gray-400 flex-shrink-0" />
+              <p className="text-sm text-gray-500">Ce type de congé n'est pas limité en jours.</p>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <Input
@@ -190,23 +275,25 @@ export function FormulaireConge() {
           />
 
           {erreurs.global && (
-            <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2.5">
+            <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2.5 flex items-start gap-2">
+              <AlertTriangle className="h-4 w-4 text-red-500 flex-shrink-0 mt-0.5" />
               <p className="text-sm text-red-600">{erreurs.global}</p>
             </div>
           )}
 
           <div className="flex items-center gap-3 pt-2">
-            <Button type="submit" loading={chargement} className="flex-1">
+            <Button type="submit" loading={chargement} disabled={soldeInsuffisant} className="flex-1">
               Soumettre la demande
             </Button>
             <Button
               type="button"
               variant="secondary"
-              onClick={() => setForm({ type_conge_id: "", date_debut: "", date_fin: "", motif: "" })}
+              onClick={() => { setForm({ type_conge_id: "", date_debut: "", date_fin: "", motif: "" }); setSolde(null); }}
             >
               Réinitialiser
             </Button>
           </div>
+
         </form>
       </CardContent>
     </Card>
