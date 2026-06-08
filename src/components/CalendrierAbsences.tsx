@@ -32,8 +32,7 @@ function buildJourMap(absences: Absence[], debutGrille: Date, finGrille: Date): 
   for (const a of absences) {
     const start = parseISO(a.date_debut);
     const end   = parseISO(a.date_fin);
-    // Intersecte avec la grille visible
-    let cur   = new Date(Math.max(debutGrille.getTime(), start.getTime()));
+    let cur    = new Date(Math.max(debutGrille.getTime(), start.getTime()));
     const stop = new Date(Math.min(finGrille.getTime(),   end.getTime()));
     while (cur <= stop) {
       const key = dateStr(cur);
@@ -51,36 +50,16 @@ export function CalendrierAbsences() {
   const [chargement, setCharge] = useState(true);
 
   useEffect(() => {
-    let annule = false;
-
     const charger = async () => {
       setCharge(true);
 
-      // 1. Récupérer l'utilisateur et son rôle
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user || annule) return;
-
-      const { data: emp } = await supabase
-        .from("employes").select("role").eq("id", user.id).single();
-      const role = emp?.role ?? "employe";
-      if (annule) return;
-
-      // 2. Bornes du mois (format date uniquement)
       const debutMoisStr = format(startOfMonth(moisCourant), "yyyy-MM-dd");
       const finMoisStr   = format(endOfMonth(moisCourant),   "yyyy-MM-dd");
 
-      // 3. Pour manager : récupérer les IDs de l'équipe
-      let employeIds: string[] | null = null;
-      if (role === "manager") {
-        const { data: equipe } = await supabase
-          .from("employes").select("id").eq("manager_id", user.id);
-        employeIds = (equipe ?? []).map((e: any) => e.id);
-        if (annule) return;
-        if (employeIds.length === 0) { setAbsences([]); setCharge(false); return; }
-      }
-
-      // 4. Construire la requête
-      let q = supabase
+      // RLS gère ce que l'utilisateur peut voir :
+      // - admin/manager → toutes les demandes
+      // - employé → ses propres demandes
+      const { data, error } = await supabase
         .from("demandes_conge")
         .select(`
           employe_id, date_debut, date_fin,
@@ -89,14 +68,14 @@ export function CalendrierAbsences() {
         `)
         .eq("statut", "approuve")
         .lte("date_debut", finMoisStr)
-        .gte("date_fin", debutMoisStr);
+        .gte("date_fin", debutMoisStr)
+        .order("date_debut");
 
-      if (employeIds !== null) {
-        q = q.in("employe_id", employeIds);
+      if (error) {
+        console.error("CalendrierAbsences error:", error);
+        setCharge(false);
+        return;
       }
-
-      const { data } = await q.order("date_debut");
-      if (annule) return;
 
       setAbsences(
         (data ?? []).map((d: any) => ({
@@ -113,7 +92,6 @@ export function CalendrierAbsences() {
     };
 
     charger();
-    return () => { annule = true; };
   }, [moisCourant]);
 
   /* ——— Construction de la grille ——— */
@@ -137,26 +115,19 @@ export function CalendrierAbsences() {
     <div className="space-y-4">
       {/* Navigation */}
       <div className="flex items-center justify-between bg-white rounded-xl border border-gray-200 px-5 py-3">
-        <button
-          onClick={() => setMois(subMonths(moisCourant, 1))}
-          className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors"
-        >
+        <button onClick={() => setMois(subMonths(moisCourant, 1))} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
           <ChevronLeft className="h-5 w-5" />
         </button>
         <h2 className="text-base font-semibold text-gray-900 capitalize">
           {format(moisCourant, "MMMM yyyy", { locale: fr })}
         </h2>
-        <button
-          onClick={() => setMois(addMonths(moisCourant, 1))}
-          className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors"
-        >
+        <button onClick={() => setMois(addMonths(moisCourant, 1))} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
           <ChevronRight className="h-5 w-5" />
         </button>
       </div>
 
       {/* Grille */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        {/* En-têtes */}
         <div className="grid grid-cols-7 border-b border-gray-100">
           {JOURS.map((j, i) => (
             <div key={j} className={`py-2 text-center text-xs font-semibold uppercase tracking-wider ${i >= 5 ? "text-gray-300" : "text-gray-500"}`}>
@@ -172,27 +143,19 @@ export function CalendrierAbsences() {
             {semaines.map((semaine, si) => (
               <div key={si} className={`grid grid-cols-7 ${si < semaines.length - 1 ? "border-b border-gray-100" : ""}`}>
                 {semaine.map((jour, ji) => {
-                  const key       = dateStr(jour);
-                  const entrees   = jourMap[key] ?? [];
-                  const estMois   = isSameMonth(jour, moisCourant);
-                  const estAuj    = isToday(jour);
+                  const key        = dateStr(jour);
+                  const entrees    = jourMap[key] ?? [];
+                  const estMois    = isSameMonth(jour, moisCourant);
+                  const estAuj     = isToday(jour);
                   const estWeekend = ji >= 5;
 
                   return (
-                    <div
-                      key={key}
-                      className={`min-h-[100px] p-2 ${ji < 6 ? "border-r border-gray-100" : ""} ${
-                        !estMois ? "bg-gray-50/50" : estWeekend ? "bg-gray-50/30" : "bg-white"
-                      }`}
-                    >
+                    <div key={key} className={`min-h-[100px] p-2 ${ji < 6 ? "border-r border-gray-100" : ""} ${!estMois ? "bg-gray-50/50" : estWeekend ? "bg-gray-50/30" : "bg-white"}`}>
                       <div className="mb-1.5">
-                        <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium ${
-                          estAuj ? "bg-blue-600 text-white" : estMois ? "text-gray-700" : "text-gray-300"
-                        }`}>
+                        <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium ${estAuj ? "bg-blue-600 text-white" : estMois ? "text-gray-700" : "text-gray-300"}`}>
                           {format(jour, "d")}
                         </span>
                       </div>
-
                       <div className="space-y-0.5">
                         {entrees.slice(0, MAX_PAR_JOUR).map((a, i) => (
                           <div
@@ -206,9 +169,7 @@ export function CalendrierAbsences() {
                           </div>
                         ))}
                         {entrees.length > MAX_PAR_JOUR && (
-                          <p className="text-[10px] text-gray-400 pl-1">
-                            +{entrees.length - MAX_PAR_JOUR} autre{entrees.length - MAX_PAR_JOUR > 1 ? "s" : ""}
-                          </p>
+                          <p className="text-[10px] text-gray-400 pl-1">+{entrees.length - MAX_PAR_JOUR} autre{entrees.length - MAX_PAR_JOUR > 1 ? "s" : ""}</p>
                         )}
                       </div>
                     </div>
@@ -221,7 +182,7 @@ export function CalendrierAbsences() {
       </div>
 
       {/* Légende */}
-      {absences.length > 0 && (
+      {!chargement && absences.length > 0 && (
         <div className="bg-white rounded-xl border border-gray-200 px-5 py-3">
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Types</p>
           <div className="flex flex-wrap gap-3">
