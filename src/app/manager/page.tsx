@@ -6,6 +6,8 @@ import { redirect } from "next/navigation";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { StatistiquesEquipe } from "@/components/manager/StatistiquesEquipe";
 import { TableauEquipe } from "@/components/manager/TableauEquipe";
+import { AbsencesEquipe } from "@/components/manager/AbsencesEquipe";
+import { SoldesEquipe } from "@/components/manager/SoldesEquipe";
 
 export default async function ManagerPage() {
   const cookieStore = await cookies();
@@ -45,6 +47,12 @@ export default async function ManagerPage() {
     >
       <div className="space-y-6">
         <StatistiquesEquipe managerId={user.id} />
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <AbsencesEquipe managerId={user.id} />
+          <SoldesEquipe managerId={user.id} />
+        </div>
+
         <TableauEquipe managerId={user.id} />
       </div>
     </AppLayout>
