@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import { Check, X, Eye } from "lucide-react";
+import { ModalDetailDemande } from "@/components/shared/ModalDetailDemande";
 import type { StatutDemande } from "@/lib/database.types";
 
 interface Demande {
@@ -34,6 +35,7 @@ export function TableauEquipe({ managerId }: { managerId: string }) {
   const [chargement, setChargement] = useState(true);
   const [filtre, setFiltre] = useState<StatutDemande | "tous">("en_attente");
   const [traitement, setTraitement] = useState<string | null>(null);
+  const [demandeDetail, setDetail]  = useState<string | null>(null);
 
   const charger = async () => {
     const { data: equipe } = await supabase
@@ -91,6 +93,10 @@ export function TableauEquipe({ managerId }: { managerId: string }) {
   const demandesFiltrees = filtre === "tous" ? demandes : demandes.filter((d) => d.statut === filtre);
 
   return (
+    <>
+    {demandeDetail && (
+      <ModalDetailDemande demandeId={demandeDetail} onClose={() => setDetail(null)} />
+    )}
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between flex-wrap gap-3">
@@ -167,7 +173,11 @@ export function TableauEquipe({ managerId }: { managerId: string }) {
                             </button>
                           </>
                         )}
-                        <button className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 transition-colors" title="Détail">
+                        <button
+                          onClick={() => setDetail(d.id)}
+                          className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+                          title="Voir le détail"
+                        >
                           <Eye className="h-4 w-4" />
                         </button>
                       </div>
@@ -187,5 +197,6 @@ export function TableauEquipe({ managerId }: { managerId: string }) {
         )}
       </CardContent>
     </Card>
+    </>
   );
 }

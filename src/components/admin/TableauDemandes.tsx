@@ -8,6 +8,7 @@ import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import { Check, X, Eye, Download } from "lucide-react";
 import type { StatutDemande } from "@/lib/database.types";
+import { ModalDetailDemande } from "@/components/shared/ModalDetailDemande";
 
 interface Demande {
   id: string;
@@ -66,6 +67,7 @@ export function TableauDemandes() {
   const [chargement, setChargement] = useState(true);
   const [traitement, setTraitement] = useState<string | null>(null);
   const [erreur, setErreur]         = useState<string | null>(null);
+  const [demandeDetail, setDetail]  = useState<string | null>(null);
 
   // Filtres
   const [filtreStatut,   setFiltreStatut]   = useState<StatutDemande | "tous">("tous");
@@ -158,6 +160,10 @@ export function TableauDemandes() {
 
   /* ——— Render ——— */
   return (
+    <>
+    {demandeDetail && (
+      <ModalDetailDemande demandeId={demandeDetail} onClose={() => setDetail(null)} />
+    )}
     <Card>
       <CardHeader>
         {/* Ligne 1 : titre + filtres statut */}
@@ -306,7 +312,11 @@ export function TableauDemandes() {
                             </button>
                           </>
                         )}
-                        <button className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 transition-colors" title="Détail">
+                        <button
+                          onClick={() => setDetail(d.id)}
+                          className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+                          title="Voir le détail"
+                        >
                           <Eye className="h-4 w-4" />
                         </button>
                       </div>
@@ -326,5 +336,6 @@ export function TableauDemandes() {
         )}
       </CardContent>
     </Card>
+    </>
   );
 }
