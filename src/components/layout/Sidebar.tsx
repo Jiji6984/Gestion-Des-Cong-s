@@ -5,18 +5,20 @@ import { usePathname, useRouter } from "next/navigation";
 import { clsx } from "clsx";
 import {
   LayoutDashboard, CalendarPlus, ClipboardList,
-  Users, LogOut, CalendarCheck, UsersRound, UserCircle, Wallet, Tag,
+  Users, LogOut, CalendarCheck, UsersRound, UserCircle, Wallet, Tag, CalendarDays,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 const navEmploye = [
-  { href: "/dashboard", label: "Tableau de bord", icon: LayoutDashboard },
-  { href: "/demande",   label: "Nouvelle demande", icon: CalendarPlus },
+  { href: "/dashboard",  label: "Tableau de bord",  icon: LayoutDashboard },
+  { href: "/demande",    label: "Nouvelle demande",  icon: CalendarPlus },
+  { href: "/calendrier", label: "Calendrier",        icon: CalendarDays },
 ];
 
 const navManager = [
-  { href: "/manager",  label: "Mon équipe",          icon: UsersRound },
-  { href: "/demande",  label: "Nouvelle demande",    icon: CalendarPlus },
+  { href: "/manager",    label: "Mon équipe",        icon: UsersRound },
+  { href: "/demande",    label: "Nouvelle demande",  icon: CalendarPlus },
+  { href: "/calendrier", label: "Calendrier",        icon: CalendarDays },
 ];
 
 const navAdmin = [
@@ -24,6 +26,7 @@ const navAdmin = [
   { href: "/admin/employes",      label: "Employés",            icon: Users },
   { href: "/admin/soldes",        label: "Soldes",              icon: Wallet },
   { href: "/admin/types-conge",   label: "Types de congés",     icon: Tag },
+  { href: "/calendrier",          label: "Calendrier",          icon: CalendarDays },
 ];
 
 const roleConfig = {
